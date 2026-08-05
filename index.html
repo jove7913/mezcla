@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#F26F21">
+<meta name="mobile-web-app-capable" content="yes">
+<title>라벨 이종 방지 검증 · Label Verify — NIFCO KOREA USA</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nifco:#F26F21; --ink:#1B1E23; --paper:#F2F3F5; --line:#D8DBDF;
+    --ok:#0F9D58; --ng:#D93025; --warn:#F4B400;
+    --disp:"Saira Condensed","Arial Narrow",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;padding-bottom:70px}
+  .mono{font-family:Consolas,"SF Mono",monospace}
+  header{background:var(--ink);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+  header .logo{background:var(--nifco);color:#fff;font-weight:800;padding:4px 10px;border-radius:4px}
+  header h1{font-size:15px;font-weight:600;flex:1}
+  header .who{font-size:12px;color:#c8cdd4;text-align:right;line-height:1.3}
+
+  nav{position:fixed;bottom:0;left:0;right:0;background:var(--ink);display:none;z-index:40;
+      grid-auto-flow:column;grid-auto-columns:1fr;border-top:2px solid #000}
+  nav.show{display:grid}
+  nav button{background:none;border:none;color:#aab1ba;font-size:11px;padding:9px 2px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+  nav button .ic{font-size:19px;line-height:1}
+  nav button.active{color:var(--nifco)}
+  nav button:focus-visible{outline:2px solid var(--nifco)}
+  @media(min-width:768px){
+    body{padding-bottom:0}
+    nav{position:static;border-top:none;grid-auto-columns:max-content;gap:6px;padding:6px 16px}
+    nav button{flex-direction:row;background:#3a414b;border:1px solid #4a525d;border-radius:6px;padding:7px 13px;font-size:13px;color:#fff}
+    nav button .ic{font-size:14px}
+    nav button.active{background:var(--nifco);border-color:var(--nifco);color:#fff}
+  }
+
+  main{max-width:1080px;margin:0 auto;padding:14px}
+  .screen{display:none}.screen.show{display:block}
+  .card{background:#fff;border:2px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h3{font-size:15px;margin-bottom:12px}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12px;font-weight:700;color:#8a919b;margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:11px;font-size:16px;border:2px solid var(--line);border-radius:8px;background:#fff}
+  .fld input:focus,.fld select:focus{border-color:var(--nifco);outline:none}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.orange{background:var(--nifco);color:#fff;border-color:var(--nifco)}
+  .btn:focus-visible{outline:2px solid var(--nifco);outline-offset:1px}
+  .bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+  .hint{font-size:13px;color:#7a828c}
+  .msg{font-size:13px;margin-top:8px;font-weight:600}
+  .msg.err{color:var(--ng)} .msg.ok{color:var(--ok)}
+  .auth-wrap{max-width:420px;margin:20px auto}
+
+  .scanbox{background:#fff;border:2px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  .scanbox label{display:block;font-size:13px;font-weight:700;color:#5a616b;margin-bottom:6px}
+  #scanInput{width:100%;font-size:20px;padding:13px;border:3px solid var(--nifco);border-radius:8px;outline:none}
+  #scanInput:disabled{background:#eee;border-color:#bbb}
+  .slots{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px}
+  @media(min-width:640px){.slots{grid-template-columns:repeat(3,1fr)}}
+  .slot{background:#fff;border:2px solid var(--line);border-radius:12px;padding:13px;min-height:96px}
+  .slot .tag{font-size:11px;font-weight:800;color:#8a919b}
+  .slot .pn{font-size:18px;font-weight:800;margin-top:7px;word-break:break-all}
+  .slot .lot{font-size:12px;color:#5a616b;margin-top:3px}
+  .slot .empty{color:#c2c7cd;font-size:14px;margin-top:12px}
+  .slot.filled{border-color:var(--ok)} .slot.bad{border-color:var(--ng);background:#fdecea}
+
+  .verdict{border-radius:14px;padding:18px;text-align:center;display:none;margin-bottom:14px;color:#fff}
+  .verdict .big{font-family:var(--disp);font-weight:800;font-size:64px;line-height:.95;letter-spacing:2px}
+  .verdict .sub{font-size:15px;font-weight:600;margin-top:6px}
+  .verdict.ok{display:block;background:var(--ok)}
+
+  #ngOverlay{position:fixed;inset:0;background:var(--ng);color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;z-index:60}
+  #ngOverlay.show{display:flex;animation:flash 1s steps(2) infinite}
+  @keyframes flash{50%{background:#A31207}}
+  @media(prefers-reduced-motion:reduce){#ngOverlay.show{animation:none}}
+  #ngOverlay .x{font-family:var(--disp);font-weight:800;font-size:120px;line-height:.9}
+  #ngOverlay h2{font-size:26px;margin:8px 0 4px}
+  #ngOverlay .detail{font-size:15px;background:rgba(0,0,0,.25);border-radius:10px;padding:12px 16px;margin:12px 0;max-width:92vw;word-break:break-all}
+  #ngOverlay input{font-size:22px;padding:10px;border:none;border-radius:8px;text-align:center;width:210px}
+
+  .tbl-wrap{overflow-x:auto;margin-bottom:14px;border-radius:12px;border:2px solid var(--line);background:#fff}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{background:#ECEEF1;font-size:11px;text-transform:uppercase;color:#5a616b;position:sticky;top:0}
+  tr:last-child td{border-bottom:none}
+  td.r-OK{color:var(--ok);font-weight:800} td.r-NG{color:var(--ng);font-weight:800}
+  .mini{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .mini.danger{color:var(--ng);border-color:#f0b6b1}
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+  @media(min-width:640px){.stats{grid-template-columns:repeat(4,1fr)}}
+  .stat{background:#fff;border:2px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+  .stat .n{font-family:var(--disp);font-weight:800;font-size:32px;line-height:1}
+  .stat .l{font-size:11px;color:#8a919b;font-weight:700;margin-top:2px}
+  .stat.s-ok .n{color:var(--ok)} .stat.s-ng .n{color:var(--ng)}
+  .filters{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;align-items:end}
+  @media(min-width:768px){.filters{grid-template-columns:repeat(6,1fr)}}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800}
+  .badge.pending{background:#fdecc8;color:#7a5b00} .badge.appr{background:#d9f2e3;color:#0b6b3d}
+  .grid4{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+  @media(min-width:768px){.grid4{grid-template-columns:repeat(4,1fr)}}
+  .grid4 input{padding:10px;font-size:15px;border:2px solid var(--line);border-radius:8px;width:100%}
+  .grid4 label{font-size:11px;font-weight:700;color:#8a919b;display:block;margin-bottom:3px}
+  .regmode-banner{background:var(--warn);color:#3a3000;border-radius:8px;padding:10px 14px;font-weight:700;font-size:14px;display:none;margin-bottom:10px}
+  .regmode-banner.show{display:block}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">NIFCO</span>
+  <h1>라벨 이종 방지 검증<br><span style="font-size:11px;font-weight:400;color:#c8cdd4">Verificación de etiquetas</span></h1>
+  <span class="who" id="whoami"></span>
+</header>
+<nav id="nav">
+  <button id="nav_verify" onclick="showScreen('verify')"><span class="ic">▣</span>검증 · Verificar</button>
+  <button id="nav_history" onclick="showScreen('history')"><span class="ic">≣</span>이력 · Historial</button>
+  <button id="nav_master" onclick="showScreen('master')"><span class="ic">⌗</span>마스터 · Maestro</button>
+  <button id="nav_members" onclick="showScreen('members')"><span class="ic">👥</span>회원 · Usuarios</button>
+  <button onclick="logout()"><span class="ic">⏻</span>로그아웃 · Salir</button>
+</nav>
+
+<main>
+<!-- ============ LOGIN ============ -->
+<section id="screen_login" class="screen show">
+  <div class="auth-wrap">
+    <div class="card">
+      <h3>로그인 · Iniciar sesión</h3>
+      <div class="fld"><label>사번 · No. de empleado</label><input id="li_emp" class="mono" inputmode="numeric" autocomplete="off"></div>
+      <div class="fld"><label>PIN</label><input id="li_pin" type="password" class="mono" inputmode="numeric"></div>
+      <div class="bar" style="margin-bottom:0;flex-direction:column;align-items:stretch">
+        <button class="btn orange" onclick="login()">로그인 · Entrar</button>
+        <button class="btn" onclick="showScreen('signup')">회원가입 · Registrarse</button>
+      </div>
+      <div class="msg" id="li_msg"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SIGNUP ============ -->
+<section id="screen_signup" class="screen">
+  <div class="auth-wrap">
+    <div class="card">
+      <h3>회원가입 · Registro de trabajador</h3>
+      <div class="fld"><label>사번 · No. de empleado</label><input id="su_emp" class="mono" inputmode="numeric" autocomplete="off"></div>
+      <div class="fld"><label>이름 · Nombre</label><input id="su_name" autocomplete="off"></div>
+      <div class="fld"><label>PIN (숫자 4~8자리 · 4-8 dígitos)</label><input id="su_pin" type="password" class="mono" inputmode="numeric"></div>
+      <div class="fld"><label>PIN 확인 · Confirmar PIN</label><input id="su_pin2" type="password" class="mono" inputmode="numeric"></div>
+      <div class="bar" style="margin-bottom:0">
+        <button class="btn orange" onclick="signup()">가입 신청 · Solicitar</button>
+        <button class="btn" onclick="showScreen('login')">← 로그인 · Volver</button>
+      </div>
+      <div class="msg" id="su_msg"></div>
+      <div class="hint" style="margin-top:10px">가입 후 관리자가 승인하면 로그인됩니다 · Espere la aprobación del administrador.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VERIFY ============ -->
+<section id="screen_verify" class="screen">
+  <div class="scanbox">
+    <label>스캔 입력 · Escaneo (순서 무관 · cualquier orden)</label>
+    <input id="scanInput" class="mono" autocomplete="off" placeholder="▌">
+    <div class="hint" style="margin-top:8px">제품 → 폴리백 → 박스 QR을 쏘세요. 마스터 기준으로 판정합니다 · Escanee producto, polybag y caja.</div>
+  </div>
+  <div class="slots">
+    <div class="slot" id="slot_product"><div class="tag">제품 QR · PRODUCTO</div><div class="empty">—</div></div>
+    <div class="slot" id="slot_polybag"><div class="tag">폴리백 QR · POLYBAG</div><div class="empty">—</div></div>
+    <div class="slot" id="slot_box"><div class="tag">박스 QR · CAJA</div><div class="empty">—</div></div>
+  </div>
+  <div class="verdict" id="verdict"></div>
+  <div class="bar">
+    <button class="btn primary" onclick="resetScan()">새 검증 · Nueva verificación</button>
+    <span class="hint">근무: <b id="shiftNow"></b></span>
+    <span class="hint" id="syncState"></span>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>시간 · Hora</th><th>품번 · Parte</th><th>LOT</th><th>결과</th><th>사유 · Motivo</th></tr></thead>
+    <tbody id="recentBody"></tbody>
+  </table></div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section id="screen_history" class="screen">
+  <div class="card">
+    <h3>이력 조회 · Consulta de historial</h3>
+    <div class="filters">
+      <div class="fld"><label>시작일 · Desde</label><input type="date" id="f_from"></div>
+      <div class="fld"><label>종료일 · Hasta</label><input type="date" id="f_to"></div>
+      <div class="fld"><label>근무조 · Turno</label>
+        <select id="f_shift"><option value="">전체</option><option value="day">주간 · Día</option><option value="night">야간 · Noche</option></select></div>
+      <div class="fld"><label>작업자 · Trabajador</label><select id="f_emp"><option value="">전체 · Todos</option></select></div>
+      <div class="fld"><label>결과 · Res.</label>
+        <select id="f_result"><option value="">전체</option><option>OK</option><option>NG</option></select></div>
+      <div class="fld"><button class="btn orange" style="width:100%" onclick="loadHistory()">조회 · Buscar</button></div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n" id="st_total">0</div><div class="l">총 스캔 · TOTAL</div></div>
+    <div class="stat s-ok"><div class="n" id="st_ok">0</div><div class="l">OK</div></div>
+    <div class="stat s-ng"><div class="n" id="st_ng">0</div><div class="l">NG</div></div>
+    <div class="stat"><div class="n" id="st_rate">-</div><div class="l">NG율 · TASA NG</div></div>
+  </div>
+  <div class="bar"><button class="btn" onclick="exportHistoryCSV()">CSV 다운로드 · Descargar CSV</button></div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>근무일</th><th>조 · Turno</th><th>시간</th><th>사번</th><th>이름 · Nombre</th><th>품번 · Parte</th><th>LOT</th><th>결과</th><th>사유 · Motivo</th></tr></thead>
+    <tbody id="histBody"></tbody>
+  </table></div>
+</section>
+
+<!-- ============ MASTER ============ -->
+<section id="screen_master" class="screen">
+  <div class="card">
+    <h3>마스터 등록 · Registro de maestro</h3>
+    <div class="regmode-banner" id="regBanner">스캔 등록 모드: 정품 라벨 3종을 스캔하면 자동 입력됩니다 · Modo registro: escanee las 3 etiquetas correctas</div>
+    <div class="grid4">
+      <div><label>대표 품번 · PARTE</label><input id="m_name" class="mono" placeholder="BR02DA00104"></div>
+      <div><label>제품QR 키</label><input id="m_product" class="mono"></div>
+      <div><label>폴리백QR 키</label><input id="m_polybag" class="mono"></div>
+      <div><label>박스QR 키</label><input id="m_box" class="mono"></div>
+    </div>
+    <div class="bar" style="margin-bottom:0">
+      <button class="btn orange" onclick="saveMasterRow()">저장 · Guardar</button>
+      <button class="btn" onclick="toggleRegMode()">스캔으로 등록 · Escanear</button>
+      <button class="btn" onclick="document.getElementById('csvFile').click()">CSV 업로드 · Subir</button>
+      <button class="btn" onclick="downloadTemplate()">CSV 양식 · Plantilla</button>
+      <button class="btn" onclick="exportMasterCSV()">내보내기 · Exportar</button>
+      <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none" onchange="importCSV(this.files[0])">
+    </div>
+    <div class="msg" id="m_msg"></div>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>대표 품번 · PARTE</th><th>제품QR</th><th>폴리백QR</th><th>박스QR</th><th></th></tr></thead>
+    <tbody id="masterBody"></tbody>
+  </table></div>
+</section>
+
+<!-- ============ MEMBERS ============ -->
+<section id="screen_members" class="screen">
+  <div class="card"><h3>회원 관리 · Gestión de usuarios</h3>
+    <div class="hint">가입 신청을 승인해야 로그인할 수 있습니다 · Apruebe la solicitud para permitir el acceso.</div>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>사번</th><th>이름 · Nombre</th><th>권한 · Rol</th><th>상태 · Estado</th><th>가입일</th><th></th></tr></thead>
+    <tbody id="memBody"></tbody>
+  </table></div>
+</section>
+</main>
+
+<div id="ngOverlay">
+  <div class="x">✕</div>
+  <h2>이종 발생 — NG · NO CONFORME</h2>
+  <div class="detail mono" id="ngDetail"></div>
+  <div style="font-size:13px;opacity:.9;margin-top:16px">감독자 코드 입력 후 해제 · Código de supervisor para desbloquear</div>
+  <input id="unlockInput" type="password" inputmode="numeric" class="mono">
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc
+";
+const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: "label" } });
+const $ = id => document.getElementById(id);
+const esc = s => String(s??"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+async function sha256(t){
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+
+/* ---- 근무일/근무조: 주간 07:30~19:30, 야간 19:30~익일 07:30 (시작일 귀속) ---- */
+function shiftInfo(d = new Date()){
+  const min = d.getHours()*60 + d.getMinutes();
+  let shift = "night", wd = new Date(d);
+  if(min >= 450 && min < 1170) shift = "day";
+  else if(min < 450) wd.setDate(wd.getDate()-1);
+  const work_date = `${wd.getFullYear()}-${String(wd.getMonth()+1).padStart(2,"0")}-${String(wd.getDate()).padStart(2,"0")}`;
+  return { shift, work_date };
+}
+const shiftKo = s => s==="day" ? "주간 · Día" : "야간 · Noche";
+
+/* ================= SESSION ================= */
+let me = null;
+function saveSession(){ localStorage.setItem("lv_session", JSON.stringify(me)); }
+function loadSessionStore(){ try{ me = JSON.parse(localStorage.getItem("lv_session")); }catch(e){ me=null; } }
+function logout(){ me=null; localStorage.removeItem("lv_session"); location.reload(); }
+function setMsg(id,t,err){ const el=$(id); el.textContent=t; el.className="msg "+(err?"err":"ok"); }
+
+async function login(){
+  const emp = $("li_emp").value.trim(), pin = $("li_pin").value;
+  if(!emp || !pin) return setMsg("li_msg","사번과 PIN을 입력하세요 · Ingrese empleado y PIN",true);
+  const { data, error } = await sb.from("workers").select("*").eq("emp_no", emp).maybeSingle();
+  if(error) return setMsg("li_msg","서버 오류 · Error: "+error.message,true);
+  if(!data) return setMsg("li_msg","등록되지 않은 사번 · No registrado",true);
+  if(data.pin_hash !== await sha256(pin)) return setMsg("li_msg","PIN이 틀립니다 · PIN incorrecto",true);
+  if(!data.approved) return setMsg("li_msg","승인 대기 중입니다 · Pendiente de aprobación",true);
+  me = { emp_no: data.emp_no, name: data.name, role: data.role };
+  saveSession(); enterApp();
+}
+async function signup(){
+  const emp=$("su_emp").value.trim(), name=$("su_name").value.trim(),
+        pin=$("su_pin").value, pin2=$("su_pin2").value;
+  if(!emp||!name||!pin) return setMsg("su_msg","모든 항목을 입력하세요 · Complete todos los campos",true);
+  if(!/^\d{4,8}$/.test(pin)) return setMsg("su_msg","PIN은 숫자 4~8자리 · PIN de 4-8 dígitos",true);
+  if(pin!==pin2) return setMsg("su_msg","PIN이 일치하지 않습니다 · PIN no coincide",true);
+  const { error } = await sb.from("workers").insert({ emp_no:emp, name, pin_hash: await sha256(pin) });
+  if(error)
+    return setMsg("su_msg", error.code==="23505" ? "이미 등록된 사번 · Empleado ya existe" : error.message, true);
+  setMsg("su_msg","신청 완료. 관리자 승인 후 로그인 가능 · Solicitud enviada",false);
+  ["su_emp","su_name","su_pin","su_pin2"].forEach(i=>$(i).value="");
+}
+function enterApp(){
+  $("nav").classList.add("show");
+  $("whoami").innerHTML=`${esc(me.name)} (${esc(me.emp_no)})<br>${esc(me.role)}`;
+  const sup = me.role==="supervisor"||me.role==="admin";
+  $("nav_master").style.display  = sup ? "" : "none";
+  $("nav_members").style.display = me.role==="admin" ? "" : "none";
+  loadMasterFromServer();
+  flushQueue();
+  showScreen("verify");
+}
+
+/* ================= PARSING ================= */
+function classify(raw){
+  const s = raw.trim();
+  if(!s) return null;
+  if(s.includes("^")){
+    const head = s.split("^")[0];
+    if(head.startsWith("55CAI")) return {type:"polybag", ...parseFields(s)};
+    if(head.startsWith("55AAL")) return {type:"box", ...parseFields(s)};
+    return {type:"unknown", raw:s};
+  }
+  if(/^M8/i.test(s)) return {type:"product", key:s.slice(2).toUpperCase(), lot:"", raw:s};
+  return {type:"unknown", raw:s};
+}
+function parseFields(s){
+  const out = {key:"", lot:"", cust:"", raw:s};
+  s.split("^").slice(1).forEach(f=>{
+    const code=f.slice(0,2), val=f.slice(2);
+    if(code==="I1") out.key = val.toUpperCase();
+    if(code==="L1") out.lot = val;
+    if(code==="I2") out.cust= val;
+  });
+  return out;
+}
+
+/* ================= MASTER ================= */
+let master = [];
+function cacheMaster(){ localStorage.setItem("lv_master_cache", JSON.stringify(master)); }
+async function loadMasterFromServer(){
+  const { data, error } = await sb.from("master").select("*").order("name");
+  if(!error && data){ master = data; cacheMaster(); }
+  else { try{ master = JSON.parse(localStorage.getItem("lv_master_cache")||"[]"); }catch(e){ master=[]; } }
+  renderMaster();
+}
+function findRowBy(col,key){ return master.find(r => (r[col]||"") === (key||"")); }
+
+async function saveMasterRow(){
+  const name=$("m_name").value.trim(), p=$("m_product").value.trim().toUpperCase(),
+        b=$("m_polybag").value.trim().toUpperCase(), x=$("m_box").value.trim().toUpperCase();
+  if(!p||!b||!x) return setMsg("m_msg","제품/폴리백/박스 키 3개 필수 · Las 3 claves son obligatorias",true);
+  const { error } = await sb.from("master").insert({ name: name||p, product:p, polybag:b, box:x });
+  if(error)
+    return setMsg("m_msg", error.code==="23505" ? "이미 등록된 키가 있습니다. 기존 행 삭제 후 재등록 · Clave duplicada" : error.message, true);
+  setMsg("m_msg","저장됨 · Guardado",false);
+  ["m_name","m_product","m_polybag","m_box"].forEach(i=>$(i).value="");
+  beep(120,1046); loadMasterFromServer();
+}
+async function delMasterRow(id){
+  await sb.from("master").delete().eq("id", id);
+  loadMasterFromServer();
+}
+function renderMaster(){
+  $("masterBody").innerHTML = master.map(r=>
+    `<tr><td class="mono">${esc(r.name)}</td><td class="mono">${esc(r.product)}</td>
+     <td class="mono">${esc(r.polybag)}</td><td class="mono">${esc(r.box)}</td>
+     <td><button class="mini danger" onclick="delMasterRow(${r.id})">삭제 · Borrar</button></td></tr>`).join("");
+}
+function importCSV(file){
+  if(!file) return;
+  const rd = new FileReader();
+  rd.onload = async ()=>{
+    const lines = rd.result.replace(/^\uFEFF/,"").split(/\r?\n/).filter(l=>l.trim());
+    const rows = [];
+    lines.forEach((line,idx)=>{
+      const c = line.split(",").map(v=>v.replace(/^"|"$/g,"").trim());
+      if(idx===0 && /product/i.test(line)) return;
+      if(c.length>=4 && c[1] && c[2] && c[3])
+        rows.push({ name:c[0]||c[1].toUpperCase(), product:c[1].toUpperCase(), polybag:c[2].toUpperCase(), box:c[3].toUpperCase() });
+    });
+    if(!rows.length) return setMsg("m_msg","가져올 행이 없습니다 · Sin filas válidas",true);
+    const { error } = await sb.from("master").upsert(rows, { onConflict:"product" });
+    setMsg("m_msg", error ? error.message : `${rows.length}개 반영됨 · ${rows.length} filas importadas`, !!error);
+    loadMasterFromServer();
+  };
+  rd.readAsText(file,"utf-8");
+  $("csvFile").value="";
+}
+function downloadTemplate(){
+  dlCSV("master_template.csv",[["name","product","polybag","box"],["BR02DA00104","BR02DA00104","BR02DA00104","BR02DA00104"]]);
+}
+function exportMasterCSV(){
+  dlCSV(`label_master_${todayStr()}.csv`,[["name","product","polybag","box"],...master.map(r=>[r.name,r.product,r.polybag,r.box])]);
+}
+
+/* --- 스캔 등록 모드 --- */
+let regMode=false;
+function toggleRegMode(){
+  regMode=!regMode;
+  $("regBanner").classList.toggle("show",regMode);
+  if(regMode) $("m_product").focus();
+}
+["m_name","m_product","m_polybag","m_box"].forEach(id=>{
+  $(id).addEventListener("keydown", e=>{
+    if(e.key==="Enter" && regMode){
+      const r = classify(e.target.value);
+      if(r && r.type!=="unknown"){
+        e.target.value="";
+        if(r.type==="product") $("m_product").value=r.key;
+        if(r.type==="polybag") $("m_polybag").value=r.key;
+        if(r.type==="box"){ $("m_box").value=r.key; if(!$("m_name").value) $("m_name").value=r.key; }
+        beep(100,880);
+      }
+      e.preventDefault();
+    }
+  });
+});
+
+/* ================= VERIFY ================= */
+let slots={product:null,polybag:null,box:null}, locked=false;
+const scanInput=$("scanInput");
+scanInput.addEventListener("keydown",e=>{ if(e.key==="Enter"){ handleScan(scanInput.value); scanInput.value=""; } });
+document.addEventListener("click",e=>{
+  if(!locked && currentScreen==="verify" && !e.target.closest("button,input,select,a,nav")) scanInput.focus();
+});
+
+function handleScan(raw){
+  if(locked) return;
+  const r=classify(raw);
+  if(!r||r.type==="unknown"){ beep(200,660); return; }
+  if(slots[r.type]) beep(200,660);
+  slots[r.type]=r; renderSlots();
+  if(slots.product&&slots.polybag&&slots.box) judge();
+}
+function renderSlots(){
+  for(const k of ["product","polybag","box"]){
+    const el=$("slot_"+k), d=slots[k];
+    el.className="slot"+(d?" filled":"");
+    el.querySelector(".tag").nextElementSibling?.remove();
+    const div=document.createElement("div");
+    if(d){ div.innerHTML=`<div class="pn mono">${esc(d.key)}</div>`+(d.lot?`<div class="lot">LOT ${esc(d.lot)}</div>`:"")+(d.cust?`<div class="lot">${esc(d.cust)}</div>`:""); }
+    else { div.className="empty"; div.textContent="—"; }
+    el.appendChild(div);
+  }
+}
+/* 판정: 품번 일치성(마스터 기준)만 확인 — LOT은 기록만 하고 판정에 사용하지 않음 */
+function judge(){
+  const p=slots.product,b=slots.polybag,x=slots.box;
+  const rowP=findRowBy("product",p.key), rowB=findRowBy("polybag",b.key), rowX=findRowBy("box",x.key);
+  const missing=[];
+  if(!rowP) missing.push("제품 "+p.key);
+  if(!rowB) missing.push("폴리백 "+b.key);
+  if(!rowX) missing.push("박스 "+x.key);
+
+  let ok=false, reason="", repName="";
+  if(missing.length){ reason="마스터 미등록 · No en maestro: "+missing.join(" / "); markBad(); }
+  else if(rowP!==rowB||rowB!==rowX){ reason=`이종 · Mezcla: ${rowP.name} / ${rowB.name} / ${rowX.name}`; markBad(); }
+  else { ok=true; repName=rowP.name; }
+
+  const {shift,work_date}=shiftInfo();
+  const rec={ work_date, shift, emp_no:me?.emp_no, emp_name:me?.name,
+    part_name: ok?repName:null, product_key:p.key, polybag_key:b.key, box_key:x.key,
+    lot_polybag:b.lot||null, lot_box:x.lot||null, result: ok?"OK":"NG", reason: reason||null };
+  pushLog(rec);
+  addRecent(rec);
+
+  if(ok){
+    const v=$("verdict"); v.className="verdict ok";
+    v.innerHTML=`<div class="big">OK</div><div class="sub mono">${esc(repName)} · LOT ${esc(b.lot||"-")}</div>`;
+    beep(150,1046); setTimeout(()=>beep(150,1318),160);
+    setTimeout(resetScan,2500);
+  } else lockdown(reason);
+}
+function markBad(){ ["product","polybag","box"].forEach(k=>$("slot_"+k).classList.add("bad")); }
+function resetScan(){
+  slots={product:null,polybag:null,box:null}; renderSlots();
+  $("verdict").className="verdict";
+  if(currentScreen==="verify") scanInput.focus();
+}
+function addRecent(r){
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td>${new Date().toLocaleTimeString()}</td><td class="mono">${esc(r.part_name||r.product_key)}</td>
+    <td class="mono">${esc(r.lot_polybag||"")}</td><td class="r-${r.result}">${r.result}</td><td>${esc(r.reason||"")}</td>`;
+  $("recentBody").prepend(tr);
+}
+
+/* --- 서버 저장 + 오프라인 큐 --- */
+async function pushLog(rec){
+  try{
+    const { error } = await sb.from("scan_log").insert(rec);
+    if(error) throw error;
+    flushQueue();
+  }catch(e){
+    const q = JSON.parse(localStorage.getItem("lv_queue")||"[]");
+    q.push(rec); localStorage.setItem("lv_queue", JSON.stringify(q));
+    $("syncState").textContent=`오프라인 대기 ${q.length}건 · ${q.length} pendientes`;
+  }
+}
+async function flushQueue(){
+  const q = JSON.parse(localStorage.getItem("lv_queue")||"[]");
+  if(!q.length){ $("syncState").textContent=""; return; }
+  const { error } = await sb.from("scan_log").insert(q);
+  if(!error){ localStorage.removeItem("lv_queue"); $("syncState").textContent=""; }
+  else $("syncState").textContent=`오프라인 대기 ${q.length}건 · ${q.length} pendientes`;
+}
+window.addEventListener("online", flushQueue);
+
+/* ================= NG LOCKDOWN ================= */
+function lockdown(reason){
+  locked=true; scanInput.disabled=true;
+  $("ngDetail").textContent=reason;
+  $("ngOverlay").classList.add("show");
+  $("unlockInput").value="";
+  setTimeout(()=>$("unlockInput").focus(),60);
+  alarm();
+}
+$("unlockInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    if(e.target.value===SUPERVISOR_CODE){
+      $("ngOverlay").classList.remove("show");
+      stopAlarm(); locked=false; scanInput.disabled=false; resetScan();
+    } else { e.target.value=""; beep(300,440); }
+  }
+});
+
+/* ================= HISTORY ================= */
+let histRows=[];
+async function initHistoryFilters(){
+  if(!$("f_from").value){
+    const w=new Date(); w.setDate(w.getDate()-6);
+    $("f_from").value=w.toISOString().slice(0,10);
+    $("f_to").value=todayStr();
+  }
+  const { data } = await sb.from("workers").select("emp_no,name").eq("approved",true).order("name");
+  const sel=$("f_emp");
+  sel.innerHTML=`<option value="">전체 · Todos</option>`+
+    (data||[]).map(w=>`<option value="${esc(w.emp_no)}">${esc(w.name)} (${esc(w.emp_no)})</option>`).join("");
+  if(me.role==="worker"){ sel.value=me.emp_no; sel.disabled=true; } else sel.disabled=false;
+}
+async function loadHistory(){
+  let q = sb.from("scan_log").select("*")
+    .gte("work_date",$("f_from").value).lte("work_date",$("f_to").value)
+    .order("scanned_at",{ascending:false}).limit(3000);
+  if($("f_shift").value)  q=q.eq("shift",$("f_shift").value);
+  if(me.role==="worker")  q=q.eq("emp_no",me.emp_no);
+  else if($("f_emp").value) q=q.eq("emp_no",$("f_emp").value);
+  if($("f_result").value) q=q.eq("result",$("f_result").value);
+  const { data, error } = await q;
+  histRows = error?[]:(data||[]);
+  const ok=histRows.filter(r=>r.result==="OK").length, ng=histRows.length-ok;
+  $("st_total").textContent=histRows.length; $("st_ok").textContent=ok; $("st_ng").textContent=ng;
+  $("st_rate").textContent=histRows.length?((ng/histRows.length*100).toFixed(1)+"%"):"-";
+  $("histBody").innerHTML=histRows.map(r=>
+    `<tr><td>${esc(r.work_date)}</td><td>${shiftKo(r.shift)}</td>
+     <td>${new Date(r.scanned_at).toLocaleTimeString()}</td>
+     <td class="mono">${esc(r.emp_no||"")}</td><td>${esc(r.emp_name||"")}</td>
+     <td class="mono">${esc(r.part_name||r.product_key||"")}</td>
+     <td class="mono">${esc(r.lot_polybag||"")}</td>
+     <td class="r-${r.result}">${r.result}</td><td>${esc(r.reason||"")}</td></tr>`).join("");
+}
+function exportHistoryCSV(){
+  dlCSV(`label_history_${$("f_from").value}_${$("f_to").value}.csv`,
+    [["work_date","shift","scanned_at","emp_no","emp_name","part","product_key","polybag_key","box_key","lot_polybag","lot_box","result","reason"],
+     ...histRows.map(r=>[r.work_date,r.shift,r.scanned_at,r.emp_no,r.emp_name,r.part_name,r.product_key,r.polybag_key,r.box_key,r.lot_polybag,r.lot_box,r.result,r.reason])]);
+}
+
+/* ================= MEMBERS ================= */
+async function loadMembers(){
+  const { data } = await sb.from("workers").select("*").order("created_at",{ascending:false});
+  $("memBody").innerHTML=(data||[]).map(w=>{
+    const self = w.emp_no===me.emp_no;
+    return `<tr><td class="mono">${esc(w.emp_no)}</td><td>${esc(w.name)}</td>
+     <td><select onchange="setRole('${esc(w.emp_no)}',this.value)" ${self?"disabled":""}>
+       ${["worker","supervisor","admin"].map(r=>`<option value="${r}" ${w.role===r?"selected":""}>${r}</option>`).join("")}
+     </select></td>
+     <td>${w.approved?'<span class="badge appr">승인 · OK</span>':'<span class="badge pending">대기 · Pend.</span>'}</td>
+     <td>${new Date(w.created_at).toLocaleDateString()}</td>
+     <td>${w.approved?"":`<button class="mini" onclick="approve('${esc(w.emp_no)}')">승인 · Aprobar</button>`}
+         ${self?"":`<button class="mini danger" onclick="delMember('${esc(w.emp_no)}')">삭제 · Borrar</button>`}</td></tr>`;
+  }).join("");
+}
+async function approve(emp){ await sb.from("workers").update({approved:true}).eq("emp_no",emp); loadMembers(); }
+async function setRole(emp,role){ await sb.from("workers").update({role}).eq("emp_no",emp); }
+async function delMember(emp){ await sb.from("workers").delete().eq("emp_no",emp); loadMembers(); }
+
+/* ================= SCREENS ================= */
+let currentScreen="login";
+const SCREENS=["login","signup","verify","history","master","members"];
+function showScreen(n){
+  currentScreen=n;
+  SCREENS.forEach(s=>$("screen_"+s).classList.toggle("show",s===n));
+  ["verify","history","master","members"].forEach(s=>{const b=$("nav_"+s); if(b)b.classList.toggle("active",s===n);});
+  if(n==="verify"){ $("shiftNow").textContent=shiftKo(shiftInfo().shift); scanInput.focus(); }
+  if(n==="history"){ initHistoryFilters().then(loadHistory); }
+  if(n==="master"){ regMode=false; $("regBanner").classList.remove("show"); loadMasterFromServer(); }
+  if(n==="members") loadMembers();
+  window.scrollTo(0,0);
+}
+
+/* ================= UTIL / SOUND ================= */
+function dlCSV(fname,rows){
+  const csv=rows.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));
+  a.download=fname; a.click();
+}
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+let ac,alarmTimer;
+function ctx(){ return ac ||= new (window.AudioContext||window.webkitAudioContext)(); }
+function beep(ms,freq){ try{
+  const o=ctx().createOscillator(),g=ctx().createGain();
+  o.frequency.value=freq;o.connect(g);g.connect(ctx().destination);
+  g.gain.value=.35;o.start();o.stop(ctx().currentTime+ms/1000);
+}catch(e){} }
+function alarm(){ alarmTimer=setInterval(()=>{beep(250,880);setTimeout(()=>beep(250,660),300);},700); beep(250,880); }
+function stopAlarm(){ clearInterval(alarmTimer); }
+
+/* ================= BOOT ================= */
+loadSessionStore();
+if(me) enterApp();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
