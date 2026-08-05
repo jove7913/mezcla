@@ -265,7 +265,30 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 ";
 const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: "label" } });
+/* ---- 초기화 방어: 설정 오류를 화면에 표시 ---- */
+let sb = null, bootError = "";
+if (typeof supabase === "undefined") {
+  bootError = "라이브러리 로드 실패 — 인터넷 연결 상태에서 새로고침하세요 · No se pudo cargar la librería, recargue con internet";
+} else if (!/^https:\/\/.+\.supabase\.co/.test(SUPABASE_URL) || SUPABASE_KEY.startsWith("PASTE")) {
+  bootError = "설정 오류: index.html 상단 CONFIG에 SUPABASE_URL과 SUPABASE_KEY를 입력하세요 · Configure URL y KEY en index.html";
+} else {
+  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { db: { schema: "label" } }); }
+  catch (e) { bootError = "Supabase 초기화 실패: " + e.message; }
+}
+window.addEventListener("DOMContentLoaded", () => {
+  if (bootError) {
+    const d = document.createElement("div");
+    d.style.cssText = "background:#D93025;color:#fff;font-weight:700;font-size:13px;padding:10px 14px;text-align:center";
+    d.textContent = "⚠ " + bootError;
+    document.body.prepend(d);
+  }
+});
+window.addEventListener("error", ev => {
+  const d = document.createElement("div");
+  d.style.cssText = "background:#D93025;color:#fff;font-weight:700;font-size:12px;padding:8px 14px;text-align:center";
+  d.textContent = "⚠ 오류 · Error: " + ev.message;
+  document.body.prepend(d);
+});
 const $ = id => document.getElementById(id);
 const esc = s => String(s??"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
 async function sha256(t){
@@ -292,6 +315,7 @@ function logout(){ me=null; localStorage.removeItem("lv_session"); location.relo
 function setMsg(id,t,err){ const el=$(id); el.textContent=t; el.className="msg "+(err?"err":"ok"); }
 
 async function login(){
+  if(!sb) return setMsg("li_msg","서버 설정이 완료되지 않았습니다 · Configuración incompleta (상단 안내 확인)",true);
   const emp = $("li_emp").value.trim(), pin = $("li_pin").value;
   if(!emp || !pin) return setMsg("li_msg","사번과 PIN을 입력하세요 · Ingrese empleado y PIN",true);
   const { data, error } = await sb.from("workers").select("*").eq("emp_no", emp).maybeSingle();
@@ -303,6 +327,7 @@ async function login(){
   saveSession(); enterApp();
 }
 async function signup(){
+  if(!sb) return setMsg("su_msg","서버 설정이 완료되지 않았습니다 · Configuración incompleta (상단 안내 확인)",true);
   const emp=$("su_emp").value.trim(), name=$("su_name").value.trim(),
         pin=$("su_pin").value, pin2=$("su_pin2").value;
   if(!emp||!name||!pin) return setMsg("su_msg","모든 항목을 입력하세요 · Complete todos los campos",true);
