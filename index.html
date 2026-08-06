@@ -136,6 +136,7 @@
         <button class="btn" onclick="showScreen('signup')">회원가입 · Registrarse</button>
       </div>
       <div class="msg" id="li_msg"></div>
+      <div class="hint" style="margin-top:10px;text-align:right" id="verTag"></div>
     </div>
   </div>
 </section>
@@ -260,9 +261,9 @@
 
 <script>
 /* ================= CONFIG ================= */
+const APP_VERSION = "1.0.2";
 const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc
-";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc";
 const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
 
 /* ---- 초기화 방어: 설정 오류를 화면에 표시 ---- */
@@ -276,6 +277,8 @@ if (typeof supabase === "undefined") {
   catch (e) { bootError = "Supabase 초기화 실패: " + e.message; }
 }
 window.addEventListener("DOMContentLoaded", () => {
+  const vt = document.getElementById("verTag");
+  if (vt) vt.textContent = "v" + APP_VERSION;
   if (bootError) {
     const d = document.createElement("div");
     d.style.cssText = "background:#D93025;color:#fff;font-weight:700;font-size:13px;padding:10px 14px;text-align:center";

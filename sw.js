@@ -1,4 +1,4 @@
-const CACHE = "labelverify-v5";
+const CACHE = "labelverify-v6";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"];
 
