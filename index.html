@@ -220,7 +220,7 @@
     <div class="grid4">
       <div><label>대표 품번 · PARTE</label><input id="m_name" class="mono" placeholder="BR02DA00104"></div>
       <div><label>제품QR 키</label><input id="m_product" class="mono"></div>
-      <div><label>폴리백QR 키</label><input id="m_polybag" class="mono"></div>
+      <div><label>폴리백QR 키 (없으면 비움 · vacío si no hay)</label><input id="m_polybag" class="mono"></div>
       <div><label>박스QR 키</label><input id="m_box" class="mono"></div>
     </div>
     <div class="bar" style="margin-bottom:0">
@@ -261,7 +261,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.1.1";
 const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc";
 const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
@@ -388,14 +388,27 @@ async function loadMasterFromServer(){
 }
 function findRowBy(col,key){ return master.find(r => (r[col]||"") === (key||"")); }
 
+let editingId = null;
+function editMasterRow(id){
+  const r = master.find(m=>m.id===id); if(!r) return;
+  editingId = id;
+  $("m_name").value=r.name; $("m_product").value=r.product;
+  $("m_polybag").value=r.polybag||""; $("m_box").value=r.box;
+  setMsg("m_msg", `수정 중: ${r.name} — 값 변경 후 [저장] · Editando, guarde para aplicar`, false);
+  window.scrollTo(0,0);
+}
 async function saveMasterRow(){
-  const name=$("m_name").value.trim(), p=$("m_product").value.trim().toUpperCase(),
-        b=$("m_polybag").value.trim().toUpperCase(), x=$("m_box").value.trim().toUpperCase();
-  if(!p||!b||!x) return setMsg("m_msg","제품/폴리백/박스 키 3개 필수 · Las 3 claves son obligatorias",true);
-  const { error } = await sb.from("master").insert({ name: name||p, product:p, polybag:b, box:x });
+  const name=$("m_name").value.trim(), p=KEYCLEAN($("m_product").value),
+        b=KEYCLEAN($("m_polybag").value), x=KEYCLEAN($("m_box").value);
+  if(!p||!x) return setMsg("m_msg","제품/박스 키는 필수 (폴리백은 없으면 비움) · Producto y caja obligatorios",true);
+  const row = { name: name||p, product:p, polybag: b||null, box:x };
+  const { error } = editingId
+    ? await sb.from("master").update(row).eq("id", editingId)
+    : await sb.from("master").insert(row);
   if(error)
-    return setMsg("m_msg", error.code==="23505" ? "이미 등록된 키가 있습니다. 기존 행 삭제 후 재등록 · Clave duplicada" : error.message, true);
-  setMsg("m_msg","저장됨 · Guardado",false);
+    return setMsg("m_msg", error.code==="23505" ? "이미 등록된 키가 있습니다 · Clave duplicada (다른 행에서 사용 중)" : error.message, true);
+  setMsg("m_msg", editingId ? "수정됨 · Actualizado" : "저장됨 · Guardado", false);
+  editingId = null;
   ["m_name","m_product","m_polybag","m_box"].forEach(i=>$(i).value="");
   beep(120,1046); loadMasterFromServer();
 }
@@ -406,31 +419,74 @@ async function delMasterRow(id){
 function renderMaster(){
   $("masterBody").innerHTML = master.map(r=>
     `<tr><td class="mono">${esc(r.name)}</td><td class="mono">${esc(r.product)}</td>
-     <td class="mono">${esc(r.polybag)}</td><td class="mono">${esc(r.box)}</td>
-     <td><button class="mini danger" onclick="delMasterRow(${r.id})">삭제 · Borrar</button></td></tr>`).join("");
+     <td class="mono">${r.polybag?esc(r.polybag):'<span style="color:#c2c7cd">— 없음</span>'}</td><td class="mono">${esc(r.box)}</td>
+     <td><button class="mini" onclick="editMasterRow(${r.id})">수정 · Editar</button><button class="mini danger" onclick="delMasterRow(${r.id})">삭제 · Borrar</button></td></tr>`).join("");
+}
+function parseCSVText(text){
+  text = text.replace(/^\uFEFF/,"");
+  const first = text.split(/\r?\n/)[0] || "";
+  const delim = first.includes("\t") ? "\t"
+              : (first.split(";").length > first.split(",").length ? ";" : ",");
+  const rows=[];
+  for(const line of text.split(/\r?\n/)){
+    if(!line.trim()) continue;
+    const cells=[]; let cur="", inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(inQ){
+        if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; }
+        else cur+=ch;
+      }else{
+        if(ch==='"') inQ=true;
+        else if(ch===delim){ cells.push(cur); cur=""; }
+        else cur+=ch;
+      }
+    }
+    cells.push(cur);
+    rows.push(cells.map(c=>c.trim()));
+  }
+  return rows;
+}
+const KEYCLEAN = s => (s||"").replace(/\s+/g,"").toUpperCase();   // 키는 공백 제거+대문자
+function headerIndex(h){
+  // 한/영/서 헤더명으로 열 위치 자동 매핑
+  const find = pats => h.findIndex(c => pats.some(p => c.toLowerCase().includes(p)));
+  const idx = {
+    name:    find(["name","대표","품명","parte","part"]),
+    product: find(["product","제품","producto"]),
+    polybag: find(["polybag","폴리","poly"]),
+    box:     find(["box","박스","caja"]),
+  };
+  return (idx.product>=0 && idx.box>=0) ? idx : null;   // 최소 제품/박스 열은 식별돼야 헤더로 인정
 }
 function importCSV(file){
   if(!file) return;
   const rd = new FileReader();
   rd.onload = async ()=>{
-    const lines = rd.result.replace(/^\uFEFF/,"").split(/\r?\n/).filter(l=>l.trim());
-    const rows = [];
-    lines.forEach((line,idx)=>{
-      const c = line.split(",").map(v=>v.replace(/^"|"$/g,"").trim());
-      if(idx===0 && /product/i.test(line)) return;
-      if(c.length>=4 && c[1] && c[2] && c[3])
-        rows.push({ name:c[0]||c[1].toUpperCase(), product:c[1].toUpperCase(), polybag:c[2].toUpperCase(), box:c[3].toUpperCase() });
+    const all = parseCSVText(rd.result);
+    if(!all.length) return setMsg("m_msg","빈 파일입니다 · Archivo vacío",true);
+    let idx = headerIndex(all[0]);
+    let dataRows;
+    if(idx){ dataRows = all.slice(1); }
+    else { idx = {name:0,product:1,polybag:2,box:3}; dataRows = all; }   // 헤더 없음: 양식 순서로 간주
+    const rows=[], skipped=[];
+    dataRows.forEach((c,i)=>{
+      const name = (idx.name>=0 ? c[idx.name] : "") || "";
+      const p = KEYCLEAN(c[idx.product]), b = KEYCLEAN(c[idx.polybag]), x = KEYCLEAN(c[idx.box]);
+      if(p && x) rows.push({ name: name.trim() || p, product:p, polybag: b||null, box:x });
+      else skipped.push(i+1);
     });
-    if(!rows.length) return setMsg("m_msg","가져올 행이 없습니다 · Sin filas válidas",true);
+    if(!rows.length) return setMsg("m_msg","가져올 행이 없습니다 (제품/박스 열 확인) · Sin filas válidas",true);
     const { error } = await sb.from("master").upsert(rows, { onConflict:"product" });
-    setMsg("m_msg", error ? error.message : `${rows.length}개 반영됨 · ${rows.length} filas importadas`, !!error);
+    if(error) return setMsg("m_msg","업로드 오류 · Error: "+error.message,true);
+    setMsg("m_msg", `${rows.length}개 반영됨` + (skipped.length?` / ${skipped.length}개 건너뜀(필수값 누락)`:"") + ` · ${rows.length} filas importadas`, false);
     loadMasterFromServer();
   };
   rd.readAsText(file,"utf-8");
   $("csvFile").value="";
 }
 function downloadTemplate(){
-  dlCSV("master_template.csv",[["name","product","polybag","box"],["BR02DA00104","BR02DA00104","BR02DA00104","BR02DA00104"]]);
+  dlCSV("master_template.csv",[["name","product","polybag","box"],["BR02DA00104","BR02DA00104","BR02DA00104","BR02DA00104"],["폴리백없는품목예시","CF2RTA00101","","CF2RTA00101"]]);
 }
 function exportMasterCSV(){
   dlCSV(`label_master_${todayStr()}.csv`,[["name","product","polybag","box"],...master.map(r=>[r.name,r.product,r.polybag,r.box])]);
@@ -451,7 +507,7 @@ function toggleRegMode(){
         e.target.value="";
         if(r.type==="product") $("m_product").value=r.key;
         if(r.type==="polybag") $("m_polybag").value=r.key;
-        if(r.type==="box"){ $("m_box").value=r.key; if(!$("m_name").value) $("m_name").value=r.key; }
+        if(r.type==="box") $("m_box").value=r.key;   // 대표품번은 직접 입력
         beep(100,880);
       }
       e.preventDefault();
@@ -473,7 +529,7 @@ function handleScan(raw){
   if(!r||r.type==="unknown"){ beep(200,660); return; }
   if(slots[r.type]) beep(200,660);
   slots[r.type]=r; renderSlots();
-  if(slots.product&&slots.polybag&&slots.box) judge();
+  tryJudge();
 }
 function renderSlots(){
   for(const k of ["product","polybag","box"]){
@@ -486,37 +542,70 @@ function renderSlots(){
     el.appendChild(div);
   }
 }
-/* 판정: 품번 일치성(마스터 기준)만 확인 — LOT은 기록만 하고 판정에 사용하지 않음 */
-function judge(){
-  const p=slots.product,b=slots.polybag,x=slots.box;
-  const rowP=findRowBy("product",p.key), rowB=findRowBy("polybag",b.key), rowX=findRowBy("box",x.key);
+/* 판정: 품번 일치성(마스터 기준)만 확인 — LOT은 기록만.
+   마스터에 폴리백 키가 있는 품목 = 3개 스캔 필수 / 없는 품목 = 제품+박스 2개로 판정 */
+function tryJudge(){
+  const p=slots.product, b=slots.polybag, x=slots.box;
+  if(!(p&&x)){                       // 제품+박스가 최소 조건, 그 전에는 대기
+    if(b&&p||b&&x) return;           // 폴리백 포함 2개까지는 계속 대기
+    return;
+  }
+  const rowP=findRowBy("product",p.key), rowX=findRowBy("box",x.key);
+
+  if(!b){
+    // 폴리백 미스캔 상태: 제품+박스만으로 판단 가능한지 확인
+    if(!rowP||!rowX){
+      const missing=[]; if(!rowP)missing.push("제품 "+p.key); if(!rowX)missing.push("박스 "+x.key);
+      return finish(false,"마스터 미등록 · No en maestro: "+missing.join(" / "));
+    }
+    if(rowP!==rowX) return finish(false,`이종 · Mezcla: ${rowP.name} / ${rowX.name}`);
+    if(rowP.polybag){
+      // 폴리백 필요 품목 → 스캔 대기 안내
+      const el=$("slot_polybag");
+      el.querySelector(".tag").nextElementSibling?.remove();
+      const d=document.createElement("div");
+      d.innerHTML='<div class="pn" style="color:#b8860b;font-size:15px">폴리백 스캔 필요<br>Escanee polybag</div>';
+      el.appendChild(d); el.style.borderColor="var(--warn)";
+      return;
+    }
+    return finish(true,"",rowP,null); // 폴리백 없는 품목: 2개 스캔으로 OK
+  }
+
+  // 3개 모두 스캔됨
+  const rowB=findRowBy("polybag",b.key);
   const missing=[];
   if(!rowP) missing.push("제품 "+p.key);
   if(!rowB) missing.push("폴리백 "+b.key);
   if(!rowX) missing.push("박스 "+x.key);
-
-  let ok=false, reason="", repName="";
-  if(missing.length){ reason="마스터 미등록 · No en maestro: "+missing.join(" / "); markBad(); }
-  else if(rowP!==rowB||rowB!==rowX){ reason=`이종 · Mezcla: ${rowP.name} / ${rowB.name} / ${rowX.name}`; markBad(); }
-  else { ok=true; repName=rowP.name; }
-
+  if(missing.length) return finish(false,"마스터 미등록 · No en maestro: "+missing.join(" / "));
+  if(rowP!==rowB||rowB!==rowX)
+    return finish(false,`이종 · Mezcla: ${rowP.name} / ${rowB.name} / ${rowX.name}`);
+  finish(true,"",rowP,b);
+}
+function finish(ok,reason,row,b){
+  const p=slots.product,x=slots.box;
+  if(!ok) markBad();
   const {shift,work_date}=shiftInfo();
   const rec={ work_date, shift, emp_no:me?.emp_no, emp_name:me?.name,
-    part_name: ok?repName:null, product_key:p.key, polybag_key:b.key, box_key:x.key,
-    lot_polybag:b.lot||null, lot_box:x.lot||null, result: ok?"OK":"NG", reason: reason||null };
+    part_name: ok?row.name:null, product_key:p.key,
+    polybag_key: slots.polybag?slots.polybag.key:null, box_key:x.key,
+    lot_polybag: slots.polybag?.lot||null, lot_box:x.lot||null,
+    result: ok?"OK":"NG", reason: reason||null };
   pushLog(rec);
   addRecent(rec);
-
   if(ok){
+    const lotShow = slots.polybag?.lot || x.lot || "-";
     const v=$("verdict"); v.className="verdict ok";
-    v.innerHTML=`<div class="big">OK</div><div class="sub mono">${esc(repName)} · LOT ${esc(b.lot||"-")}</div>`;
+    v.innerHTML=`<div class="big">OK</div><div class="sub mono">${esc(row.name)}${slots.polybag?"":" (폴리백 없음 품목 · sin polybag)"} · LOT ${esc(lotShow)}</div>`;
     beep(150,1046); setTimeout(()=>beep(150,1318),160);
     setTimeout(resetScan,2500);
   } else lockdown(reason);
 }
 function markBad(){ ["product","polybag","box"].forEach(k=>$("slot_"+k).classList.add("bad")); }
 function resetScan(){
-  slots={product:null,polybag:null,box:null}; renderSlots();
+  slots={product:null,polybag:null,box:null};
+  $("slot_polybag").style.borderColor="";
+  renderSlots();
   $("verdict").className="verdict";
   if(currentScreen==="verify") scanInput.focus();
 }
