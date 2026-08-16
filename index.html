@@ -115,6 +115,10 @@
   <h1>라벨 이종 방지 검증<br><span style="font-size:11px;font-weight:400;color:#c8cdd4">Verificación de etiquetas</span></h1>
   <span class="who" id="whoami"></span>
 </header>
+<div id="installBar" style="display:none;background:#2a2f37;color:#fff;padding:10px 16px;text-align:center;font-size:14px">
+  <span style="margin-right:10px">이 기기에 앱을 설치할 수 있습니다 · Puede instalar la app en este equipo</span>
+  <button id="installBtn" style="background:var(--nifco);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:14px;font-weight:700;cursor:pointer">📲 설치 · Instalar</button>
+</div>
 <nav id="nav">
   <button id="nav_verify" onclick="showScreen('verify')"><span class="ic">▣</span>검증 · Verificar</button>
   <button id="nav_history" onclick="showScreen('history')"><span class="ic">≣</span>이력 · Historial</button>
@@ -261,7 +265,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = "1.1.3";
+const APP_VERSION = "1.1.4";
 const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc";
 const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
@@ -772,6 +776,25 @@ function beep(ms,freq){ try{
 }catch(e){} }
 function alarm(){ alarmTimer=setInterval(()=>{beep(250,880);setTimeout(()=>beep(250,660),300);},700); beep(250,880); }
 function stopAlarm(){ clearInterval(alarmTimer); }
+
+/* ================= PWA INSTALL ================= */
+let deferredInstall = null;
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredInstall = e;
+  if(!isStandalone) $("installBar").style.display = "block";   // 미설치 기기에서만 배너 표시
+});
+document.addEventListener("DOMContentLoaded", () => {
+  $("installBtn").addEventListener("click", async () => {
+    if(!deferredInstall) return;
+    deferredInstall.prompt();
+    const { outcome } = await deferredInstall.userChoice;
+    if(outcome === "accepted") $("installBar").style.display = "none";
+    deferredInstall = null;
+  });
+});
+window.addEventListener("appinstalled", () => { $("installBar").style.display = "none"; });
 
 /* ================= BOOT ================= */
 loadSessionStore();
