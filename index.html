@@ -261,7 +261,7 @@
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = "1.1.1";
+const APP_VERSION = "1.1.3";
 const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc";
 const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
@@ -477,9 +477,17 @@ function importCSV(file){
       else skipped.push(i+1);
     });
     if(!rows.length) return setMsg("m_msg","가져올 행이 없습니다 (제품/박스 열 확인) · Sin filas válidas",true);
-    const { error } = await sb.from("master").upsert(rows, { onConflict:"product" });
+    // 같은 제품QR 키가 여러 행이면 마지막 행만 반영 (업로드 묶음 내 중복 제거)
+    const byKey = new Map();
+    rows.forEach(r => byKey.set(r.product, r));
+    const dedup = [...byKey.values()];
+    const dupCnt = rows.length - dedup.length;
+    const { error } = await sb.from("master").upsert(dedup, { onConflict:"product" });
     if(error) return setMsg("m_msg","업로드 오류 · Error: "+error.message,true);
-    setMsg("m_msg", `${rows.length}개 반영됨` + (skipped.length?` / ${skipped.length}개 건너뜀(필수값 누락)`:"") + ` · ${rows.length} filas importadas`, false);
+    setMsg("m_msg", `${dedup.length}개 반영됨`
+      + (dupCnt?` / 제품QR 중복 ${dupCnt}건은 마지막 행 기준 처리`:"")
+      + (skipped.length?` / ${skipped.length}개 건너뜀(필수값 누락)`:"")
+      + ` · ${dedup.length} filas importadas`, false);
     loadMasterFromServer();
   };
   rd.readAsText(file,"utf-8");
@@ -499,26 +507,44 @@ function toggleRegMode(){
   $("regBanner").classList.toggle("show",regMode);
   if(regMode) $("m_product").focus();
 }
+function regCommit(el){
+  if(!regMode) return;
+  const r = classify(el.value);
+  if(r && r.type!=="unknown"){
+    el.value="";
+    if(r.type==="product") $("m_product").value=r.key;
+    if(r.type==="polybag") $("m_polybag").value=r.key;
+    if(r.type==="box") $("m_box").value=r.key;   // 대표품번은 직접 입력
+    beep(100,880);
+  }
+}
 ["m_name","m_product","m_polybag","m_box"].forEach(id=>{
+  let t=null;
   $(id).addEventListener("keydown", e=>{
-    if(e.key==="Enter" && regMode){
-      const r = classify(e.target.value);
-      if(r && r.type!=="unknown"){
-        e.target.value="";
-        if(r.type==="product") $("m_product").value=r.key;
-        if(r.type==="polybag") $("m_polybag").value=r.key;
-        if(r.type==="box") $("m_box").value=r.key;   // 대표품번은 직접 입력
-        beep(100,880);
-      }
-      e.preventDefault();
-    }
+    if(e.key==="Enter" && regMode){ clearTimeout(t); regCommit(e.target); e.preventDefault(); }
+  });
+  $(id).addEventListener("input", e=>{
+    if(!regMode) return;
+    clearTimeout(t);
+    t=setTimeout(()=>regCommit(e.target),300);
   });
 });
 
 /* ================= VERIFY ================= */
 let slots={product:null,polybag:null,box:null}, locked=false;
 const scanInput=$("scanInput");
-scanInput.addEventListener("keydown",e=>{ if(e.key==="Enter"){ handleScan(scanInput.value); scanInput.value=""; } });
+let scanTimer=null;
+function commitScan(){
+  const v=scanInput.value.trim();
+  if(v.length>=8){ handleScan(v); scanInput.value=""; }   // 8자 미만은 오입력으로 간주하고 대기
+}
+scanInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter"){ clearTimeout(scanTimer); commitScan(); }
+});
+scanInput.addEventListener("input",()=>{      // Enter 미전송 스캐너 대응: 입력 정지 0.3초 후 자동 확정
+  clearTimeout(scanTimer);
+  scanTimer=setTimeout(commitScan,300);
+});
 document.addEventListener("click",e=>{
   if(!locked && currentScreen==="verify" && !e.target.closest("button,input,select,a,nav")) scanInput.focus();
 });
