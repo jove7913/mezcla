@@ -265,10 +265,11 @@
 
 <script>
 /* ================= CONFIG ================= */
-const APP_VERSION = "1.1.4";
+const APP_VERSION = "1.1.5";
 const SUPABASE_URL = "https://rblvroleeozttebiyfot.supabase.co";   // 예: https://xxxx.supabase.co
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc";
-const SUPERVISOR_CODE = "7913";                    // NG 잠금 해제 코드 (배포 전 변경)
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJibHZyb2xlZW96dHRlYml5Zm90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5MjA1MjUsImV4cCI6MjA5ODQ5NjUyNX0.VIbEXzurTBNMtlNfNtqBCOJ9MmuTGE1TY9cSLpzYmsc
+";
+const SUPERVISOR_CODE = "1111";                    // NG 잠금 해제 코드 (배포 전 변경)
 
 /* ---- 초기화 방어: 설정 오류를 화면에 표시 ---- */
 let sb = null, bootError = "";
@@ -361,22 +362,26 @@ function enterApp(){
 function classify(raw){
   const s = raw.trim();
   if(!s) return null;
-  if(s.includes("^")){
-    const head = s.split("^")[0];
-    if(head.startsWith("55CAI")) return {type:"polybag", ...parseFields(s)};
-    if(head.startsWith("55AAL")) return {type:"box", ...parseFields(s)};
+  /* 스캐너가 스페인어 자판 PC/PDA에 연결되면 ^가 &로 치환되어 들어옴 → 둘 다 구분자로 인정 */
+  let d = null;
+  if(s.includes("^")) d = "^";
+  else if(/^55[A-Z0-9]{3}&/.test(s)) d = "&";
+  if(d){
+    const head = s.split(d)[0];
+    if(head.startsWith("55CAI")) return {type:"polybag", ...parseFields(s, d)};
+    if(head.startsWith("55AAL")) return {type:"box", ...parseFields(s, d)};
     return {type:"unknown", raw:s};
   }
   if(/^M8/i.test(s)) return {type:"product", key:s.slice(2).toUpperCase(), lot:"", raw:s};
   return {type:"unknown", raw:s};
 }
-function parseFields(s){
+function parseFields(s, d){
   const out = {key:"", lot:"", cust:"", raw:s};
-  s.split("^").slice(1).forEach(f=>{
+  s.split(d).slice(1).forEach(f=>{
     const code=f.slice(0,2), val=f.slice(2);
     if(code==="I1") out.key = val.toUpperCase();
-    if(code==="L1") out.lot = val;
-    if(code==="I2") out.cust= val;
+    if(code==="L1") out.lot = val.replace(/'/g,"-");   // 자판 치환(- → ')도 원복
+    if(code==="I2") out.cust= val.replace(/'/g,"-");
   });
   return out;
 }
